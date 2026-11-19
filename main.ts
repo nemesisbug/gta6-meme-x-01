@@ -18,16 +18,34 @@
 // stand in for /bot and /output:
 //   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const BOT_DIR = process.env.MAKEFUN_BOT_DIR ?? '/bot';
 const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
 mkdirSync(OUTPUT_DIR, { recursive: true });
+
+// Validate the URL before copying: a placeholder is no post's address,
+// so refuse to hand in POST.json while it still holds "<handle>" or "<id>".
+const postUrl = (JSON.parse(readFileSync(join(BOT_DIR, 'POST.json'), 'utf8')) as { url?: unknown }).url;
+if (typeof postUrl !== 'string' || postUrl.includes('<handle>') || postUrl.includes('<id>')) {
+  console.error('POST.json still holds a placeholder URL ("<handle>" or "<id>") — post the meme on X and put its real address in POST.json first.');
+  process.exit(1);
+}
+
 try {
   copyFileSync(join(BOT_DIR, 'POST.json'), join(OUTPUT_DIR, 'POST.json'));
 } catch (err) {
   console.error(`POST.json could not be copied from ${BOT_DIR}: ${(err as Error).message}`);
   process.exit(1);
 }
+
+// Read the copied file back and verify it: it must be JSON with a string
+// "url" field, and the address being submitted is printed for the record.
+const copied = JSON.parse(readFileSync(join(OUTPUT_DIR, 'POST.json'), 'utf8')) as { url?: unknown };
+if (typeof copied.url !== 'string' || copied.url.length === 0) {
+  console.error('Copied POST.json has no string "url" field — refusing to submit an empty address.');
+  process.exit(1);
+}
+console.log(`Submitting post: ${copied.url}`);
